@@ -1,0 +1,515 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Contacto Extraterrestre 3D</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            background-color: #000000;
+            height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            overflow: hidden;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            cursor: default;
+        }
+
+        /* Botón de Inicio Centrado */
+        #btn-inicio {
+            padding: 18px 45px;
+            font-size: 1.6rem;
+            color: #ffffff;
+            background: transparent;
+            border: 2px solid #00ffcc;
+            border-radius: 50px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            box-shadow: 0 0 25px rgba(0, 255, 204, 0.4);
+            z-index: 10;
+        }
+
+        #btn-inicio:hover {
+            background-color: #00ffcc;
+            color: #000000;
+            box-shadow: 0 0 35px rgba(0, 255, 204, 0.9);
+            transform: scale(1.08);
+        }
+
+        /* Controles Flotantes Superior Derecha */
+        .controles {
+            display: none;
+            position: fixed;
+            top: 25px;
+            right: 25px;
+            gap: 12px;
+            z-index: 20;
+        }
+
+        .btn-control {
+            padding: 10px 22px;
+            font-size: 0.95rem;
+            color: #ffffff;
+            background: rgba(0, 0, 0, 0.8);
+            border: 1px solid rgba(0, 255, 204, 0.5);
+            border-radius: 30px;
+            backdrop-filter: blur(5px);
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+
+        .btn-control:hover {
+            background: #00ffcc;
+            color: #000000;
+            transform: scale(1.05);
+            box-shadow: 0 0 15px rgba(0, 255, 204, 0.6);
+        }
+
+        #btn-salir:hover {
+            background: rgba(255, 0, 85, 0.9);
+            border-color: #ff0055;
+            color: #ffffff;
+            box-shadow: 0 0 15px rgba(255, 0, 85, 0.8);
+        }
+
+        /* Contenedor del Lienzo */
+        #canvas-container {
+            display: none;
+            position: absolute;
+            width: 100%;
+            height: 100%;
+        }
+
+        canvas {
+            display: block;
+        }
+    </style>
+</head>
+<body>
+
+    <!-- CAMBIA AQUÍ LA RUTA A TU ARCHIVO DE AUDIO -->
+    <audio id="miMusica" src="musica45.mp3" preload="auto" loop></audio>
+
+    <!-- Botón de Inicio -->
+    <button id="btn-inicio">Inicio</button>
+
+    <!-- Controles flotantes -->
+    <div class="controles" id="panel-controles">
+        <button class="btn-control" id="btn-audio">🔊 Sonido: ON</button>
+        <button class="btn-control" id="btn-salir">Salir</button>
+    </div>
+
+    <!-- Contenedor del lienzo -->
+    <div id="canvas-container">
+        <canvas id="ufoCanvas"></canvas>
+    </div>
+
+    <script>
+        const btnInicio = document.getElementById('btn-inicio');
+        const btnSalir = document.getElementById('btn-salir');
+        const btnAudio = document.getElementById('btn-audio');
+        const panelControles = document.getElementById('panel-controles');
+        const canvasContainer = document.getElementById('canvas-container');
+        const canvas = document.getElementById('ufoCanvas');
+        const ctx = canvas.getContext('2d');
+        const audioElement = document.getElementById('miMusica');
+
+        let animacionId = null;
+        let activo = false;
+
+        // Máquina de estados del relato visual
+        // ESTADOS: 'ESPERA_INICIAL', 'ABRIENDO_ESCOTILLA', 'BAJANDO', 'SALUDANDO', 'SUBIENDO', 'ESPERA_DESPEGUE', 'DESPEGANDO', 'REINICIO_ESPERA'
+        let estado = 'ESPERA_INICIAL';
+        let tiempoEstadoInicio = 0;
+
+        let ufoX = 0, ufoY = 0;
+        let ufoVelY = 0;
+        let escotillaProgreso = 0; // 0 cerrada, 1 abierta
+        let alienYProgreso = 0;    // 0 dentro del OVNI, 1 en el suelo
+        let saludoBrazoProgreso = 0;
+        let mirandoAlFrente = true;
+        let estelaDespegue = [];
+
+        function ajustarCanvas() {
+            canvas.width = window.innerWidth;
+            canvas.height = window.innerHeight;
+        }
+
+        window.addEventListener('resize', () => {
+            if (activo) ajustarCanvas();
+        });
+
+        btnAudio.addEventListener('click', (e) => {
+            e.stopPropagation();
+            audioElement.muted = !audioElement.muted;
+            btnAudio.textContent = audioElement.muted ? "🔇 Sonido: OFF" : "🔊 Sonido: ON";
+        });
+
+        btnInicio.addEventListener('click', () => {
+            btnInicio.style.display = 'none';
+            panelControles.style.display = 'flex';
+            canvasContainer.style.display = 'block';
+
+            ajustarCanvas();
+            reiniciarAnimacion();
+            activo = true;
+
+            audioElement.currentTime = 0;
+            audioElement.muted = false;
+            btnAudio.textContent = "🔊 Sonido: ON";
+            audioElement.play().catch(err => console.log(err));
+
+            iniciarAnimacion();
+        });
+
+        btnSalir.addEventListener('click', (e) => {
+            e.stopPropagation();
+            activo = false;
+            if (animacionId) cancelAnimationFrame(animacionId);
+
+            audioElement.pause();
+            audioElement.currentTime = 0;
+
+            canvasContainer.style.display = 'none';
+            panelControles.style.display = 'none';
+            btnInicio.style.display = 'block';
+
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+        });
+
+        function reiniciarAnimacion() {
+            estado = 'ESPERA_INICIAL';
+            tiempoEstadoInicio = Date.now();
+            ufoX = canvas.width / 2;
+            ufoY = canvas.height * 0.38;
+            ufoVelY = 0;
+            escotillaProgreso = 0;
+            alienYProgreso = 0;
+            saludoBrazoProgreso = 0;
+            mirandoAlFrente = true;
+            estelaDespegue = [];
+        }
+
+        function iniciarAnimacion() {
+            if (!activo) return;
+
+            ctx.fillStyle = '#000000';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+            const ahora = Date.now();
+            const tSeg = (ahora - tiempoEstadoInicio) * 0.001;
+            const cx = canvas.width / 2;
+            const cy = canvas.height / 2;
+            const radioCirculo = Math.min(canvas.width, canvas.height) * 0.38;
+
+            // 1. MARCO CIRCULAR DE NEÓN
+            ctx.save();
+            ctx.strokeStyle = 'rgba(255, 255, 255, 0.85)';
+            ctx.lineWidth = 2.5;
+            ctx.shadowBlur = 18;
+            ctx.shadowColor = '#ffffff';
+            ctx.beginPath();
+            ctx.arc(cx, cy, radioCirculo, 0, Math.PI * 2);
+            ctx.stroke();
+            ctx.restore();
+
+            // Delimitar dentro del marco
+            ctx.save();
+            ctx.beginPath();
+            ctx.arc(cx, cy, radioCirculo - 2, 0, Math.PI * 2);
+            ctx.clip();
+
+            // CONTROL LÓGICO DE LA NARRATIVA (CRONOGRAMA)
+            const sueloY = cy + radioCirculo * 0.55;
+            const flotacionLevitacion = Math.sin(Date.now() * 0.003) * 6;
+
+            if (estado === 'ESPERA_INICIAL') {
+                ufoY = canvas.height * 0.38 + flotacionLevitacion;
+                if (tSeg >= 5.0) {
+                    estado = 'ABRIENDO_ESCOTILLA';
+                    tiempoEstadoInicio = ahora;
+                }
+            } 
+            else if (estado === 'ABRIENDO_ESCOTILLA') {
+                ufoY = canvas.height * 0.38 + flotacionLevitacion;
+                escotillaProgreso = Math.min(1.0, escotillaProgreso + 0.02);
+                if (escotillaProgreso >= 1.0) {
+                    estado = 'BAJANDO';
+                    tiempoEstadoInicio = ahora;
+                }
+            } 
+            else if (estado === 'BAJANDO') {
+                ufoY = canvas.height * 0.38 + flotacionLevitacion;
+                alienYProgreso = Math.min(1.0, alienYProgreso + 0.012);
+                if (alienYProgreso >= 1.0) {
+                    estado = 'SALUDANDO';
+                    tiempoEstadoInicio = ahora;
+                }
+            } 
+            else if (estado === 'SALUDANDO') {
+                ufoY = canvas.height * 0.38 + flotacionLevitacion;
+                // Gestos del saludo
+                saludoBrazoProgreso = Math.sin((ahora - tiempoEstadoInicio) * 0.006);
+                if (tSeg >= 3.5) {
+                    mirandoAlFrente = false; // Se da la vuelta
+                }
+                if (tSeg >= 4.5) {
+                    estado = 'SUBIENDO';
+                    tiempoEstadoInicio = ahora;
+                }
+            } 
+            else if (estado === 'SUBIENDO') {
+                ufoY = canvas.height * 0.38 + flotacionLevitacion;
+                alienYProgreso = Math.max(0.0, alienYProgreso - 0.015);
+                if (alienYProgreso <= 0.0) {
+                    escotillaProgreso = Math.max(0.0, escotillaProgreso - 0.03);
+                    if (escotillaProgreso <= 0.0) {
+                        estado = 'ESPERA_DESPEGUE';
+                        tiempoEstadoInicio = ahora;
+                    }
+                }
+            } 
+            else if (estado === 'ESPERA_DESPEGUE') {
+                ufoY = canvas.height * 0.38 + flotacionLevitacion;
+                if (tSeg >= 3.0) { // 3 segundos de espera estática
+                    estado = 'DESPEGANDO';
+                    tiempoEstadoInicio = ahora;
+                    ufoVelY = -2;
+                }
+            } 
+            else if (estado === 'DESPEGANDO') {
+                ufoVelY -= 2.2; // Aceleración hiperbólica
+                ufoY += ufoVelY;
+
+                // Estela hiperveloz
+                estelaDespegue.push({ x: ufoX, y: ufoY + 20, alfa: 1.0 });
+
+                if (ufoY < -150) {
+                    estado = 'REINICIO_ESPERA';
+                    tiempoEstadoInicio = ahora;
+                }
+            } 
+            else if (estado === 'REINICIO_ESPERA') {
+                if (tSeg >= 3.0) { // 3 segundos de pantalla limpia antes de reiniciar
+                    reiniciarAnimacion();
+                }
+            }
+
+            // DIBUJAR RAYO TRACTOR / LUZ DE LA ESCOTILLA
+            if (escotillaProgreso > 0 && estado !== 'DESPEGANDO' && estado !== 'REINICIO_ESPERA') {
+                const luzGrad = ctx.createLinearGradient(ufoX, ufoY + 15, ufoX, sueloY);
+                luzGrad.addColorStop(0, 'rgba(0, 255, 204, ' + (0.6 * escotillaProgreso) + ')');
+                luzGrad.addColorStop(1, 'rgba(0, 255, 204, 0.0)');
+
+                ctx.fillStyle = luzGrad;
+                ctx.beginPath();
+                ctx.moveTo(ufoX - 15 * escotillaProgreso, ufoY + 15);
+                ctx.lineTo(ufoX + 15 * escotillaProgreso, ufoY + 15);
+                ctx.lineTo(ufoX + 55 * escotillaProgreso, sueloY);
+                ctx.lineTo(ufoX - 55 * escotillaProgreso, sueloY);
+                ctx.closePath();
+                ctx.fill();
+            }
+
+            // DIBUJAR ALIENÍGENA REALISTA ("GREY")
+            if (escotillaProgreso > 0 && estado !== 'DESPEGANDO' && estado !== 'REINICIO_ESPERA') {
+                const alienY = (ufoY + 15) + (sueloY - (ufoY + 30)) * alienYProgreso;
+                const escalaAlien = 0.45 + 0.55 * alienYProgreso;
+
+                ctx.save();
+                ctx.translate(ufoX, alienY);
+                ctx.scale(escalaAlien, escalaAlien);
+
+                // Sombra del alien en el suelo
+                if (alienYProgreso > 0.8) {
+                    ctx.fillStyle = 'rgba(0, 0, 0, 0.5)';
+                    ctx.beginPath();
+                    ctx.ellipse(0, 42, 18, 6, 0, 0, Math.PI * 2);
+                    ctx.fill();
+                }
+
+                // Cuerpo estético estilizado gris plateado
+                const bodyGrad = ctx.createLinearGradient(-10, -20, 10, 30);
+                bodyGrad.addColorStop(0, '#d0d8e0');
+                bodyGrad.addColorStop(0.5, '#788490');
+                bodyGrad.addColorStop(1, '#303840');
+
+                ctx.fillStyle = bodyGrad;
+                ctx.strokeStyle = '#20252a';
+                ctx.lineWidth = 1;
+
+                // Torso y extremidades
+                ctx.beginPath();
+                ctx.ellipse(0, 10, 9, 22, 0, 0, Math.PI * 2); // Torso
+                ctx.fill();
+                ctx.stroke();
+
+                // Piernas
+                ctx.beginPath();
+                ctx.rect(-7, 28, 5, 15);
+                ctx.rect(2, 28, 5, 15);
+                ctx.fill();
+
+                // Brazo Izquierdo
+                ctx.beginPath();
+                ctx.rect(-13, -2, 4, 22);
+                ctx.fill();
+
+                // Brazo Derecho (Saludo o Normal)
+                ctx.save();
+                ctx.translate(10, -2);
+                if (estado === 'SALUDANDO' && mirandoAlFrente) {
+                    const anguloSaludo = -Math.PI * 0.75 + saludoBrazoProgreso * 0.25;
+                    ctx.rotate(anguloSaludo);
+                }
+                ctx.beginPath();
+                ctx.rect(0, 0, 4, 22);
+                ctx.fill();
+                ctx.restore();
+
+                // Cabeza voluminosa alienígena
+                ctx.beginPath();
+                ctx.ellipse(0, -22, 16, 20, 0, 0, Math.PI * 2);
+                ctx.fill();
+                ctx.stroke();
+
+                // Ojos oscuros y brillantes almendrados
+                if (mirandoAlFrente) {
+                    ctx.fillStyle = '#05080c';
+                    ctx.shadowBlur = 4;
+                    ctx.shadowColor = '#00f0ff';
+
+                    // Ojo Izquierdo
+                    ctx.beginPath();
+                    ctx.ellipse(-6, -22, 5, 8, -Math.PI / 7, 0, Math.PI * 2);
+                    ctx.fill();
+
+                    // Ojo Derecho
+                    ctx.beginPath();
+                    ctx.ellipse(6, -22, 5, 8, Math.PI / 7, 0, Math.PI * 2);
+                    ctx.fill();
+
+                    // Reflejo realista de luz en los ojos
+                    ctx.fillStyle = '#ffffff';
+                    ctx.shadowBlur = 0;
+                    ctx.beginPath();
+                    ctx.arc(-5, -24, 1.5, 0, Math.PI * 2);
+                    ctx.arc(7, -24, 1.5, 0, Math.PI * 2);
+                    ctx.fill();
+                }
+
+                ctx.restore();
+            }
+
+            // DIBUJAR ESTELA DE DESPEGUE HIPERVELOZ
+            if (estado === 'DESPEGANDO') {
+                for (let i = estelaDespegue.length - 1; i >= 0; i--) {
+                    const e = estelaDespegue[i];
+                    e.alfa -= 0.08;
+                    if (e.alfa <= 0) {
+                        estelaDespegue.splice(i, 1);
+                        continue;
+                    }
+                    ctx.save();
+                    ctx.globalAlpha = e.alfa;
+                    ctx.fillStyle = '#00ffcc';
+                    ctx.shadowBlur = 25;
+                    ctx.shadowColor = '#00ffcc';
+                    ctx.beginPath();
+                    ctx.ellipse(e.x, e.y, 12, 45, 0, 0, Math.PI * 2);
+                    ctx.fill();
+                    ctx.restore();
+                }
+            }
+
+            // DIBUJAR OVNI METALICO Y REALISTA
+            if (estado !== 'REINICIO_ESPERA') {
+                ctx.save();
+                ctx.translate(ufoX, ufoY);
+
+                // Sombra inferior proyeccion OVNI
+                const ufoGradSombra = ctx.createRadialGradient(0, 15, 5, 0, 15, 75);
+                ufoGradSombra.addColorStop(0, 'rgba(0, 0, 0, 0.7)');
+                ufoGradSombra.addColorStop(1, 'rgba(0, 0, 0, 0)');
+                ctx.fillStyle = ufoGradSombra;
+                ctx.beginPath();
+                ctx.ellipse(0, 18, 70, 15, 0, 0, Math.PI * 2);
+                ctx.fill();
+
+                // Cúpula superior de cristal oscuro reflectante
+                const domeGrad = ctx.createLinearGradient(-30, -35, 30, -5);
+                domeGrad.addColorStop(0, '#1a2634');
+                domeGrad.addColorStop(0.5, '#4a607a');
+                domeGrad.addColorStop(1, '#0b1017');
+
+                ctx.fillStyle = domeGrad;
+                ctx.strokeStyle = '#607890';
+                ctx.lineWidth = 1.2;
+                ctx.beginPath();
+                ctx.ellipse(0, -12, 36, 24, 0, 0, Math.PI, true);
+                ctx.fill();
+                ctx.stroke();
+
+                // Reflejo especular en la cúpula
+                ctx.fillStyle = 'rgba(255, 255, 255, 0.35)';
+                ctx.beginPath();
+                ctx.ellipse(-10, -22, 14, 5, -Math.PI / 6, 0, Math.PI * 2);
+                ctx.fill();
+
+                // Cuerpo principal del platillo (Metal cromo 3D)
+                const ufoMetal = ctx.createLinearGradient(-80, -10, 80, 20);
+                ufoMetal.addColorStop(0, '#404850');
+                ufoMetal.addColorStop(0.25, '#b0b8c0');
+                ufoMetal.addColorStop(0.5, '#ffffff');
+                ufoMetal.addColorStop(0.75, '#707880');
+                ufoMetal.addColorStop(1, '#20252b');
+
+                ctx.fillStyle = ufoMetal;
+                ctx.beginPath();
+                ctx.ellipse(0, 2, 85, 18, 0, 0, Math.PI * 2);
+                ctx.fill();
+
+                // Borde metálico inferior
+                ctx.fillStyle = '#181d22';
+                ctx.beginPath();
+                ctx.ellipse(0, 6, 82, 12, 0, 0, Math.PI * 2);
+                ctx.fill();
+
+                // Luces perimetrales pulsantes (Destellos de neón)
+                const numLuces = 8;
+                const tiempoLuz = Date.now() * 0.008;
+
+                for (let i = 0; i < numLuces; i++) {
+                    const ang = (i / numLuces) * Math.PI * 2;
+                    const lx = Math.cos(ang) * 72;
+                    const ly = 4 + Math.sin(ang) * 10;
+                    const luzHue = ((i * 45) + tiempoLuz * 50) % 360;
+
+                    ctx.save();
+                    ctx.fillStyle = `hsl(${luzHue}, 100%, 70%)`;
+                    ctx.shadowBlur = 12;
+                    ctx.shadowColor = `hsl(${luzHue}, 100%, 50%)`;
+
+                    ctx.beginPath();
+                    ctx.arc(lx, ly, 3.5, 0, Math.PI * 2);
+                    ctx.fill();
+                    ctx.restore();
+                }
+
+                ctx.restore();
+            }
+
+            ctx.restore(); // Fin del marco circular
+
+            animacionId = requestAnimationFrame(iniciarAnimacion);
+        }
+    </script>
+</body>
+</html>
